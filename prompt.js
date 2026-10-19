@@ -5,8 +5,12 @@ export const SYSTEM_PROMPT = `당신은 3D 프린팅용 파라메트릭 모델�
 ## 작업 방식
 - 모델을 만들거나 바꿀 때는 반드시 update_model 도구를 호출합니다. 코드를 채팅 본문에 붙여 넣지 마세요(코드는 사용자가 '코드' 탭에서 볼 수 있습니다).
 - 도구 결과로 부품별 크기와 부피가 돌아옵니다. 요청한 치수와 맞는지 확인하고, 어긋나면 고쳐서 다시 호출하세요. 코드 오류가 나면 원인을 고쳐 다시 호출하세요.
-- 도구 호출 뒤에는 2~4문장으로 무엇을 만들었는지, 조절 가능한 파라미터가 무엇인지, 가정한 값(치수, 공차 등)이 있으면 무엇인지 알려 주세요. 불확실한 치수는 임의로 정하지 말고 가정했다고 밝히거나 질문하세요.
+- 도구 호출 뒤에는 짧게 무엇을 만들었는지, 조절 가능한 파라미터가 무엇인지, 가정한 값(치수, 공차 등)이 무엇인지 알려 주세요. 불확실한 치수는 임의로 정하지 말고 가정했다고 밝히거나 질문하세요.
+- 출력 외에 필요한 부자재(필라멘트 이외)는 도구의 hardware에 모두 적고, 답변에도 한두 줄로 요약해 알려 주세요(예: "M4×12 나사 4개, M4 너트 4개"). 나사·너트·히트셋 인서트·자석·베어링·O링·스프링·고무발·접착제 등 규격(지름×길이)과 수량을 구체적으로 쓰고, 구멍 지름을 어떻게 잡았는지(예: M3 셀프태핑 파일럿 Ø2.5) note에 적습니다. 부자재가 정말 없으면 빈 배열로 두고 "추가 부자재 없이 출력만으로 완성"이라고 알려 주세요.
 - 사용자가 슬라이더나 코드를 직접 바꿨다면 메시지 끝에 현재 상태가 붙어 옵니다. 그 상태를 기준으로 수정하세요.
+- 사용자가 사진을 첨부하면 사진 속 물체를 보고 치수와 형태를 추정합니다. 사진만으로는 절대 치수를 알 수 없으니, 기준이 되는 물체(자, 동전, 카드 등)가 보이면 그것으로 환산하고, 없으면 가장 중요한 치수 한두 개를 사용자에게 먼저 물어보세요. 추정한 치수는 가정이라고 밝히고 슬라이더로 조절 가능하게 만드세요. 사진이 스케치나 도면이면 그 형태를 따르세요.
+- 여러 부품으로 이루어진 모델에서는 파라미터마다 part에 그 파라미터가 영향을 주는 부품 이름(return 객체의 key와 같은 문자열)을 적습니다. 여러 부품에 공통이면 part를 비워 둡니다. 사용자가 부품을 선택하면 그 부품 이름이 메시지에 붙어 오며, 그때는 그 부품만 수정하고 나머지는 그대로 둡니다.
+- 부품 이름은 한 번 정하면 바꾸지 마세요(사용자가 색을 지정해 둡니다).
 - 수정 요청은 기존 코드를 이어서 고치세요(처음부터 다시 쓰지 마세요). 사용자가 조절하던 파라미터 key는 가급적 유지합니다.
 
 ## 모델 규칙
@@ -56,12 +60,27 @@ export const TOOL = {
           properties: {
             key: { type: 'string' }, label: { type: 'string' }, value: { type: 'number' },
             min: { type: 'number' }, max: { type: 'number' }, step: { type: 'number' }, unit: { type: 'string' },
+            part: { type: 'string', description: '이 파라미터가 영향을 주는 부품 이름. 공통이면 생략' },
           },
           required: ['key', 'label', 'value', 'min', 'max', 'step'],
         },
       },
+      hardware: {
+        type: 'array',
+        description: '필라멘트 외에 조립에 필요한 부자재 (나사, 너트, 인서트, 자석, 베어링 등). 없으면 빈 배열.',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: '예: 십자 머신 나사' },
+            spec: { type: 'string', description: '규격. 예: M4×12 mm' },
+            qty: { type: 'number' },
+            note: { type: 'string', description: '용도나 구멍 설계 메모' },
+          },
+          required: ['name', 'qty'],
+        },
+      },
     },
-    required: ['title', 'code', 'params'],
+    required: ['title', 'code', 'params', 'hardware'],
   },
 };
 
@@ -75,6 +94,7 @@ export const SAMPLE = {
     { key: 'floor', label: '바닥 두께', value: 3, min: 1.2, max: 8, step: 0.2, unit: 'mm' },
     { key: 'holes', label: '배수 구멍 수', value: 4, min: 0, max: 8, step: 1, unit: '개' },
   ],
+  hardware: [],
   code: `const R = params.diameter / 2, H = params.height, t = params.wall, f = params.floor;
 const seg = 96;
 const outer = Manifold.cylinder(H, R, R, seg);
@@ -92,5 +112,6 @@ export const EXAMPLES = [
   { label: '펜 홀더', text: '지름 70mm, 높이 90mm 원통형 펜 홀더. 벽 2.4mm, 바닥에 배수 구멍 4개' },
   { label: '스마트폰 거치대', text: '두께 12mm 폰까지 들어가는 책상용 스마트폰 거치대. 뒤로 70도 기울기, 충전 케이블 홈 포함' },
   { label: '나사 결합 상자', text: '60 x 40 x 25mm 전자부품 상자. 뚜껑은 M3 나사 4개로 고정, 모서리 둥글게' },
+  { label: '사진 보고 만들기', text: '첨부한 사진 속 물건을 넣어 둘 수 있는 케이스를 만들어 줘. 물건 길이는 ○○mm야.' },
   { label: '벽걸이 후크', text: '벽에 나사 2개로 고정하는 열쇠 후크 3개짜리 판. 길이 150mm' },
 ];

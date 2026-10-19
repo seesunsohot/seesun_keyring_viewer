@@ -79,6 +79,8 @@ let model = null;       // { title, summary, code, params: [{key,label,value,min
 let values = {};
 let built = [];         // parts from worker
 let hidden = new Set();
+let colors = {};        // part name -> hex, survives model updates
+let selected = null;    // selected part name
 let codeDirty = false;  // user edited code/params manually since Claude last saw them
 let buildSeq = 0;
 
@@ -91,11 +93,14 @@ function renderParts(first) {
     geo.setAttribute('position', new THREE.BufferAttribute(p.positions, 3));
     geo.setIndex(new THREE.BufferAttribute(p.indices, 1));
     const flat = geo.toNonIndexed(); flat.computeVertexNormals(); geo.dispose();
-    const mesh = new THREE.Mesh(flat, new THREE.MeshStandardMaterial({ color: PALETTE[i % PALETTE.length], roughness: 0.62, side: THREE.DoubleSide }));
+    const mesh = new THREE.Mesh(flat, new THREE.MeshStandardMaterial({ color: colors[p.name] ?? PALETTE[i % PALETTE.length], roughness: 0.62, side: THREE.DoubleSide }));
     mesh.visible = !hidden.has(p.name);
+    mesh.userData.name = p.name;
     root.add(mesh);
     return mesh;
   });
+  if (selected && !built.some((p) => p.name === selected)) selected = null;
+  applySelection(); renderLayers();
   const box = overallBox();
   const c = new THREE.Vector3((box.min[0] + box.max[0]) / 2, (box.min[1] + box.max[1]) / 2, box.min[2]);
   root.position.set(-c.x, -c.z, c.y);   // center in x/y, rest on the grid (model z -> three y)
@@ -118,35 +123,40 @@ function renderDims() {
   const area = built.reduce((a, p) => a + p.area, 0) / 100;             // cm²
   const rows = built.map((p, i) => {
     const s = [0, 1, 2].map((k) => fmt(p.bbox.max[k] - p.bbox.min[k])).join(' × ');
-    return `<tr><td><label><input type="checkbox" data-part="${i}" ${hidden.has(p.name) ? '' : 'checked'}> ${esc(p.name)}</label></td><td>${s}</td><td>${fmt(p.volume / 1000, 2)}</td><td>${p.tris.toLocaleString()}</td></tr>`;
+    return `<tr><td>${esc(p.name)}</td><td>${s}</td><td>${fmt(p.volume / 1000, 2)}</td><td>${p.tris.toLocaleString()}</td></tr>`;
   }).join('');
   $('dims').innerHTML = `
     <div class="big">${fmt(w)} × ${fmt(d)} × ${fmt(h)} mm</div>
     <p class="muted">전체 가로 × 세로 × 높이 · 부피 ${fmt(vol, 2)} cm³ · 표면적 ${fmt(area, 1)} cm² · PLA 100% 채움 기준 약 ${fmt(vol * 1.24, 1)} g</p>
     <table><thead><tr><th>부품</th><th>크기 (mm)</th><th>부피 cm³</th><th>삼각형</th></tr></thead><tbody>${rows}</tbody></table>
     <p class="muted">모든 부품은 닫힌(watertight) 메시입니다. 실제 무게는 채움 비율에 따라 달라집니다.</p>`;
-  $('dims').querySelectorAll('input[data-part]').forEach((el) => el.addEventListener('change', () => {
-    const p = built[+el.dataset.part];
-    el.checked ? hidden.delete(p.name) : hidden.add(p.name);
-    meshes[+el.dataset.part].visible = el.checked;
-  }));
 }
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function renderSliders() {
   const box = $('sliders'); box.innerHTML = '';
-  const ps = model?.params ?? [];
-  $('noParams').style.display = ps.length ? 'none' : '';
-  for (const p of ps) {
-    const wrap = document.createElement('div'); wrap.className = 'slider';
-    const id = 'p_' + p.key;
-    wrap.innerHTML = `<label for="${id}">${esc(p.label || p.key)}</label><output id="${id}_o"></output><input id="${id}" type="range" min="${p.min}" max="${p.max}" step="${p.step}">`;
-    box.append(wrap);
-    const input = wrap.querySelector('input'), out = wrap.querySelector('output');
-    const show = () => { out.textContent = `${values[p.key]}${p.unit ? ' ' + p.unit : ''}`; };
-    input.value = values[p.key]; show();
-    input.addEventListener('input', () => { values[p.key] = parseFloat(input.value); show(); syncJson(); codeDirty = true; scheduleRebuild(); });
+  const all = model?.params ?? [];
+  $('noParams').style.display = all.length ? 'none' : '';
+  renderSelBar();
+  const shown = selected ? all.filter((p) => !p.part || p.part === selected) : all;
+  const groups = new Map();
+  for (const p of shown) { const g = p.part || '공통'; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(p); }
+  const heads = !selected && groups.size > 1;
+  for (const [g, list] of groups) {
+    if (heads || (selected && list.some((p) => !p.part) && g === '공통')) { const h = document.createElement('div'); h.className = 'group'; h.textContent = g === '공통' ? '공통 (모든 부품)' : g; box.append(h); }
+    for (const p of list) box.append(sliderEl(p));
   }
+  if (selected && !shown.some((p) => p.part === selected)) { const n = document.createElement('p'); n.className = 'muted'; n.textContent = `"${selected}"만의 슬라이더는 없습니다. 이 부품을 바꾸려면 채팅에 요청하세요. 선택한 부품이 Claude에게 함께 전달됩니다.`; box.append(n); }
+}
+function sliderEl(p) {
+  const wrap = document.createElement('div'); wrap.className = 'slider';
+  const id = 'p_' + p.key;
+  wrap.innerHTML = `<label for="${id}">${esc(p.label || p.key)}</label><output id="${id}_o"></output><input id="${id}" type="range" min="${p.min}" max="${p.max}" step="${p.step}">`;
+  const input = wrap.querySelector('input'), out = wrap.querySelector('output');
+  const show = () => { out.textContent = `${values[p.key]}${p.unit ? ' ' + p.unit : ''}`; };
+  input.value = values[p.key]; show();
+  input.addEventListener('input', () => { values[p.key] = parseFloat(input.value); show(); syncJson(); codeDirty = true; scheduleRebuild(); });
+  return wrap;
 }
 let rebuildTimer;
 function scheduleRebuild() { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(() => rebuild(), 150); }
@@ -161,7 +171,7 @@ async function rebuild({ first = false } = {}) {
     const parts = await build(model.code, values);
     if (seq !== buildSeq) return null;
     built = parts;
-    renderParts(first); renderDims();
+    renderParts(first); renderDims(); renderBom();
     status.textContent = `생성 완료 · ${Math.round(performance.now() - t0)} ms · 부품 ${parts.length}개`;
     return { ok: true, parts };
   } catch (err) {
@@ -172,18 +182,23 @@ async function rebuild({ first = false } = {}) {
 }
 
 function setModel(m, { first = true, fromUser = false } = {}) {
-  model = { title: m.title || '모델', summary: m.summary || '', code: m.code, params: (m.params || []).map(normParam) };
+  model = { title: m.title || '모델', summary: m.summary || '', code: m.code, params: (m.params || []).map(normParam), hardware: normHardware(m.hardware) };
+  if (m.colors) colors = { ...m.colors };
   values = {}; for (const p of model.params) values[p.key] = p.value;
   hidden = new Set();
-  $('title').textContent = model.title; $('summary').textContent = model.summary;
+  $('title').value = model.title; $('summary').textContent = model.summary;
   $('code').value = model.code; syncJson(); renderSliders();
-  store.set('studio.model', JSON.stringify(model));
+  persist();
   codeDirty = fromUser;
   return rebuild({ first });
 }
+function persist() { store.set('studio.model', JSON.stringify({ ...model, colors })); }
+function normHardware(h) {
+  return (Array.isArray(h) ? h : []).filter((x) => x && x.name).map((x) => ({ name: String(x.name), spec: String(x.spec ?? ''), qty: Math.max(1, Math.round(Number(x.qty) || 1)), note: String(x.note ?? '') }));
+}
 function normParam(p) {
   const value = Number(p.value), min = Number(p.min ?? value / 4), max = Number(p.max ?? value * 4);
-  return { key: String(p.key), label: p.label ?? p.key, value, min: Math.min(min, value), max: Math.max(max, value), step: Number(p.step) || Math.max((max - min) / 100, 0.01), unit: p.unit ?? '' };
+  return { key: String(p.key), label: p.label ?? p.key, value, min: Math.min(min, value), max: Math.max(max, value), step: Number(p.step) || Math.max((max - min) / 100, 0.01), unit: p.unit ?? '', part: p.part ? String(p.part) : '' };
 }
 
 // ---------- export ----------
@@ -261,6 +276,7 @@ if (!apiKeyEl.value) $('settings').classList.add('open');
 function validTool(input) {
   if (!input || typeof input.code !== 'string' || !input.code.trim()) return '`code`가 비어 있습니다.';
   if (!Array.isArray(input.params ?? [])) return '`params`는 배열이어야 합니다.';
+  if (input.hardware !== undefined && !Array.isArray(input.hardware)) return '`hardware`는 배열이어야 합니다.';
   for (const p of input.params ?? []) if (!p || typeof p.key !== 'string' || !Number.isFinite(Number(p.value))) return `params 항목이 잘못됐습니다: ${JSON.stringify(p)}`;
   return null;
 }
@@ -278,7 +294,7 @@ async function runTool(block) {
   const res = await setModel(block.input, { first: !model || !built.length, fromUser: false });
   if (res?.ok) {
     note.textContent = `모델 적용: ${block.input.title || ''} (${res.parts.length}개 부품)`;
-    return { type: 'tool_result', tool_use_id: block.id, content: `성공. 현재 모델 치수:\n${summarize(res.parts)}` };
+    return { type: 'tool_result', tool_use_id: block.id, content: `성공. 현재 모델 치수:\n${summarize(res.parts)}\n부자재 ${model.hardware.length}종 등록됨. 답변에서 필요한 부자재(나사 규격·수량 등)를 사용자에게 알려 주세요.` };
   }
   note.textContent = '코드 오류: ' + (res?.error ?? '알 수 없음'); note.classList.add('err');
   return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: `코드 실행 실패: ${res?.error ?? '알 수 없음'}\n코드를 고쳐서 update_model을 다시 호출하세요.` };
@@ -292,16 +308,21 @@ async function converse(userText) {
   const modelId = $('model').value;
 
   // State the user may have changed by hand since Claude last saw it
-  let content = userText;
+  let text = userText;
   if (model) {
-    const state = codeDirty
-      ? `\n\n[현재 모델 상태 — 사용자가 직접 수정했을 수 있음]\n파라미터: ${JSON.stringify(values)}\n코드:\n${model.code === $('code').value ? model.code : $('code').value}`
-      : `\n\n[현재 파라미터: ${JSON.stringify(values)}]`;
-    content += state;
+    text += codeDirty
+      ? `\n\n[현재 모델 상태 — 사용자가 직접 수정했을 수 있음]\n제목: ${model.title}\n파라미터: ${JSON.stringify(values)}\n코드:\n${$('code').value}`
+      : `\n\n[현재 제목: ${model.title} / 파라미터: ${JSON.stringify(values)}]`;
+    if (selected) text += `\n[사용자가 선택한 부품: "${selected}" — 요청은 특별한 언급이 없으면 이 부품에 대한 것입니다. 다른 부품은 그대로 두세요.]`;
   }
+  const imgs = attachments; attachments = []; renderThumbs();
+  const content = imgs.length
+    ? [...imgs.map((a) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: a.data } })), { type: 'text', text }]
+    : text;
   const rollback = messages.length;
   messages.push({ role: 'user', content });
-  addMsg(userText, 'user');
+  const mine = addMsg(userText, 'user');
+  for (const a of imgs) { const im = document.createElement('img'); im.src = a.url; im.alt = '첨부 사진'; mine.prepend(im); }
   busy = true; $('send').textContent = '중지'; $('send').classList.remove('primary');
 
   try {
@@ -362,7 +383,7 @@ async function converse(userText) {
 
 function send() {
   if (busy) { currentStream?.abort(); return; }
-  const text = $('prompt').value.trim();
+  const text = $('prompt').value.trim() || (attachments.length ? '첨부한 사진을 보고 만들어 주세요.' : '');
   if (!text) return;
   $('prompt').value = '';
   converse(text);
@@ -371,7 +392,7 @@ $('send').onclick = send;
 $('prompt').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
 $('newChat').onclick = () => {
   if (busy) return;
-  messages = []; chat.innerHTML = ''; greet();
+  messages = []; attachments = []; renderThumbs(); chat.innerHTML = ''; greet();
 };
 
 function greet() {
@@ -388,7 +409,7 @@ $('runCode').onclick = async () => {
   model.code = $('code').value;
   values = v;
   for (const p of model.params) if (v[p.key] === undefined) values[p.key] = p.value;
-  store.set('studio.model', JSON.stringify(model));
+  persist();
   codeDirty = true; renderSliders();
   const res = await rebuild();
   if (res && !res.ok) addMsg('코드 오류: ' + res.error, 'sys err');
@@ -410,3 +431,131 @@ let saved = null;
 try { saved = JSON.parse(store.get('studio.model') || 'null'); } catch { /* ignore */ }
 greet();
 setModel(saved?.code ? saved : SAMPLE, { first: true }).then((r) => { if (r && !r.ok && saved) setModel(SAMPLE, { first: true }); });
+
+// ---------- title (file name) ----------
+$('title').addEventListener('input', () => { if (model) { model.title = $('title').value; persist(); } });
+$('title').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
+$('title').addEventListener('blur', () => { if (!$('title').value.trim()) { $('title').value = model?.title || '모델'; } });
+
+// ---------- parts: layers panel, selection, picking ----------
+const SEL_COLOR = 0x1f5fd1;
+function applySelection() {
+  meshes.forEach((m) => {
+    m.children.filter((c) => c.userData.outline).forEach((c) => { m.remove(c); c.geometry.dispose(); c.material.dispose(); });
+    if (m.userData.name === selected && m.visible) {
+      const line = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 30), new THREE.LineBasicMaterial({ color: SEL_COLOR }));
+      line.userData.outline = true; m.add(line);
+    }
+  });
+}
+function selectPart(name) {
+  selected = selected === name ? null : name;
+  applySelection(); renderLayers(); renderSliders();
+}
+function renderLayers() {
+  const el = $('layers');
+  el.hidden = built.length < 2;
+  el.innerHTML = '';
+  built.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'layer'; row.setAttribute('aria-selected', p.name === selected);
+    const hex = '#' + meshes[i].material.color.getHexString();
+    row.innerHTML = `<input type="color" value="${hex}" aria-label="${esc(p.name)} 색상"><span class="nm">${esc(p.name)}</span><button class="eye" aria-label="${esc(p.name)} 보이기/숨기기">${hidden.has(p.name) ? '○' : '●'}</button>`;
+    row.addEventListener('click', () => selectPart(p.name));
+    const color = row.querySelector('input');
+    color.addEventListener('click', (e) => e.stopPropagation());
+    color.addEventListener('input', () => { colors[p.name] = color.value; meshes[i].material.color.set(color.value); persist(); });
+    row.querySelector('.eye').addEventListener('click', (e) => {
+      e.stopPropagation();
+      hidden.has(p.name) ? hidden.delete(p.name) : hidden.add(p.name);
+      meshes[i].visible = !hidden.has(p.name); applySelection(); renderLayers();
+    });
+    el.append(row);
+  });
+}
+function renderSelBar() {
+  let bar = $('selBar');
+  if (!bar) { bar = document.createElement('div'); bar.id = 'selBar'; bar.className = 'sel'; $('pParams').prepend(bar); }
+  bar.hidden = !selected;
+  if (!selected) return;
+  bar.innerHTML = `<strong>선택: ${esc(selected)}</strong><button id="soloPart">이 부품만 보기</button><button id="stlPart">이 부품 STL</button><button id="deselect">선택 해제</button>`;
+  $('deselect').onclick = () => selectPart(selected);
+  $('stlPart').onclick = () => { const p = built.find((x) => x.name === selected); if (p) save(new Blob([stlBytes([p])], { type: 'model/stl' }), `${slug(model.title)}-${slug(p.name)}.stl`); };
+  $('soloPart').onclick = () => {
+    const only = built.every((p) => p.name === selected || hidden.has(p.name));
+    hidden = new Set(only ? [] : built.filter((p) => p.name !== selected).map((p) => p.name));
+    meshes.forEach((m) => { m.visible = !hidden.has(m.userData.name); }); applySelection(); renderLayers();
+  };
+}
+// click to pick (ignore drags used for orbiting)
+let down = null;
+renderer.domElement.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+  const hit = ray.intersectObjects(meshes.filter((m) => m.visible), false)[0];
+  if (hit) { if (hit.object.userData.name !== selected) selectPart(hit.object.userData.name); }
+  else if (selected) selectPart(selected);
+});
+
+// ---------- parts list: filament + hardware ----------
+function renderBom() {
+  const el = $('bom');
+  if (!built.length) { el.innerHTML = '<p class="muted">아직 모델이 없습니다.</p>'; return; }
+  const rows = built.map((p) => {
+    const vol = p.volume / 1000, shell = Math.min(vol, (p.area / 100) * 0.12);        // ~3 perimeters of 0.4 mm
+    const rough = (shell + 0.15 * Math.max(vol - shell, 0)) * 1.24;
+    return `<tr><td>${esc(p.name)}</td><td>${fmt(vol * 1.24, 1)}</td><td>${fmt(rough, 1)}</td></tr>`;
+  }).join('');
+  const sum = built.reduce((a, p) => { const v = p.volume / 1000, sh = Math.min(v, (p.area / 100) * 0.12); return a + (sh + 0.15 * Math.max(v - sh, 0)) * 1.24; }, 0);
+  const hw = model.hardware.length
+    ? model.hardware.map((h) => `<div class="hw"><span>${esc(h.name)}${h.spec ? ' · ' + esc(h.spec) : ''}</span><b>${h.qty}개</b>${h.note ? `<small>${esc(h.note)}</small>` : ''}</div>`).join('')
+    : '<p class="muted">필요한 부자재가 없습니다. (Claude가 조립에 필요하다고 판단하면 여기에 적습니다.)</p>';
+  el.innerHTML = `
+    <div class="group" style="margin-top:0">출력물 (PLA 기준 필라멘트)</div>
+    <table><thead><tr><th>부품</th><th>100% g</th><th>일반 설정 g</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="muted">일반 설정은 벽 3줄·채움 15% 가정의 대략값이고, 합계 약 ${fmt(sum, 0)} g입니다. 서포트·브림·실패 출력분은 포함하지 않았습니다.</p>
+    <div class="group">필요한 부자재 (필라멘트 외)</div>${hw}
+    <div class="row"><button id="copyBom">목록 복사</button></div>`;
+  $('copyBom').onclick = async () => {
+    const t = `${model.title}\n[출력] ${built.map((p) => p.name).join(', ')}\n[부자재]\n` + (model.hardware.map((h) => `- ${h.name}${h.spec ? ' ' + h.spec : ''} x${h.qty}${h.note ? ' (' + h.note + ')' : ''}`).join('\n') || '- 없음');
+    try { await navigator.clipboard.writeText(t); status.textContent = '목록을 복사했습니다'; } catch { status.textContent = '복사할 수 없습니다'; }
+  };
+}
+
+// ---------- photo attachments ----------
+let attachments = [];     // [{ data (base64), url }]
+async function shrink(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1568 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  const url = c.toDataURL('image/jpeg', 0.85);
+  return { data: url.split(',')[1], url };
+}
+async function addFiles(files) {
+  for (const f of files) {
+    if (!f.type.startsWith('image/')) continue;
+    if (attachments.length >= 5) { addMsg('사진은 한 번에 5장까지 보낼 수 있습니다.', 'sys'); break; }
+    try { attachments.push(await shrink(f)); } catch { addMsg(`${f.name || '이미지'}를 읽을 수 없습니다 (HEIC 등은 JPG/PNG로 바꿔 주세요).`, 'sys err'); }
+  }
+  renderThumbs();
+}
+function renderThumbs() {
+  const el = $('thumbs'); el.innerHTML = '';
+  attachments.forEach((a, i) => {
+    const d = document.createElement('div'); d.className = 'thumb';
+    d.innerHTML = `<img src="${a.url}" alt="첨부 사진 ${i + 1}"><button aria-label="삭제">×</button>`;
+    d.querySelector('button').onclick = () => { attachments.splice(i, 1); renderThumbs(); };
+    el.append(d);
+  });
+}
+$('attach').onclick = () => $('file').click();
+$('file').addEventListener('change', () => { addFiles([...$('file').files]); $('file').value = ''; });
+$('prompt').addEventListener('paste', (e) => { const f = [...(e.clipboardData?.files ?? [])]; if (f.length) { e.preventDefault(); addFiles(f); } });
+const rail = document.querySelector('.rail');
+rail.addEventListener('dragover', (e) => { if ([...(e.dataTransfer?.types ?? [])].includes('Files')) { e.preventDefault(); rail.classList.add('drop'); } });
+rail.addEventListener('dragleave', (e) => { if (e.target === rail) rail.classList.remove('drop'); });
+rail.addEventListener('drop', (e) => { e.preventDefault(); rail.classList.remove('drop'); addFiles([...e.dataTransfer.files]); });
