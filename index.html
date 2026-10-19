@@ -1,453 +1,158 @@
+<!doctype html>
+<html lang="ko">
+<head>
 <meta charset="utf-8">
-<title>Seesun Keyring Case</title>
+<title>Seesun 3D Studio</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
-/* Layout: full-height 3D stage on the left, a spec sheet / control rail on the right; stacks on phones. */
 :root {
-  --bg: #eef0f2;
-  --panel: #ffffff;
-  --fg: #16202b;
-  --muted: #5d6b79;
-  --line: #d6dce2;
-  --accent: #1f5fd1;        /* Waveshare PCB blue, pulled toward ink */
-  --accent-soft: #e3ebfa;
-  --stage: #e4e8ec;
-  --warn: #a8570b;
-  --font-ui: "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
-  --font-num: "Pretendard Variable", Pretendard, system-ui, sans-serif;
+  --bg: #eef0f2; --panel: #ffffff; --fg: #16202b; --muted: #5d6b79; --line: #d6dce2;
+  --accent: #1f5fd1; --accent-soft: #e3ebfa; --stage: #e4e8ec; --warn: #a8570b; --err: #b3261e;
+  --user: #e3ebfa; --bot: #f3f5f7;
+  --font: "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0f1418; --panel: #161d23; --fg: #e4e9ee; --muted: #93a1ae; --line: #2a343d;
-    --accent: #6c9cf2; --accent-soft: #1d2a3f; --stage: #11171c; --warn: #e3a35c; color-scheme: dark;
+    --accent: #6c9cf2; --accent-soft: #1d2a3f; --stage: #11171c; --warn: #e3a35c; --err: #f2b8b5;
+    --user: #1d2a3f; --bot: #1c252d; color-scheme: dark;
   }
 }
-:root[data-theme="dark"] {
-  --bg: #0f1418; --panel: #161d23; --fg: #e4e9ee; --muted: #93a1ae; --line: #2a343d;
-  --accent: #6c9cf2; --accent-soft: #1d2a3f; --stage: #11171c; --warn: #e3a35c; color-scheme: dark;
-}
 html, body { height: 100%; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.55 var(--font-ui); }
-.app { display: grid; grid-template-columns: minmax(0, 1fr) 360px; height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.55 var(--font); }
+.app { display: grid; grid-template-columns: minmax(0, 1fr) 420px; height: 100%; }
 .stage { position: relative; background: var(--stage); min-height: 0; }
 .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
-.hud { position: absolute; left: 16px; top: 16px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
-.hud h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
-.hud p { margin: 0; color: var(--muted); font-size: 12px; }
-.status { position: absolute; left: 16px; bottom: 16px; font: 12px var(--font-num); color: var(--muted); }
-.views { position: absolute; right: 16px; top: 16px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; max-width: 60%; }
-.rail { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding-inline: 20px; padding-block: 20px 32px; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
-section { display: flex; flex-direction: column; gap: 10px; }
-h2 { margin: 0; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-button, .btn { font: 500 13px var(--font-ui); color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 11px; cursor: pointer; }
-button:hover { border-color: var(--accent); }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.hud { position: absolute; left: 16px; top: 14px; right: 16px; display: flex; justify-content: space-between; gap: 12px; pointer-events: none; }
+.hud h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.hud p { margin: 2px 0 0; color: var(--muted); font-size: 12px; max-width: 46ch; }
+.hud .links { pointer-events: auto; display: flex; gap: 6px; align-items: flex-start; }
+.views { position: absolute; left: 16px; bottom: 36px; display: flex; flex-wrap: wrap; gap: 6px; }
+.status { position: absolute; left: 16px; bottom: 12px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rail { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+button, .btn, select, input, textarea { font: inherit; }
+button, .btn { font-weight: 500; font-size: 13px; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; text-decoration: none; display: inline-block; }
+button:hover, .btn:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button[aria-pressed="true"], .tab[aria-selected="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); }
-.row { display: flex; flex-wrap: wrap; gap: 6px; }
-.slider { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; }
+button:disabled { opacity: 0.5; cursor: default; }
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.bar strong { font-size: 13px; }
+.settings { display: none; padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--bg); gap: 10px; flex-direction: column; }
+.settings.open { display: flex; }
+.settings label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.settings input, .settings select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); }
+.settings .note { font-size: 12px; color: var(--muted); margin: 0; }
+.chat { flex: 1 1 0; min-height: 140px; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.msg { padding: 8px 11px; border-radius: 10px; max-width: 92%; white-space: pre-wrap; word-break: break-word; }
+.msg.user { align-self: flex-end; background: var(--user); }
+.msg.bot { align-self: flex-start; background: var(--bot); }
+.msg.sys { align-self: stretch; max-width: 100%; background: none; color: var(--muted); font-size: 12px; padding: 0 2px; }
+.msg.err { color: var(--err); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { font-size: 12px; font-weight: 400; }
+.composer { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); align-items: flex-end; }
+.composer textarea { flex: 1; resize: none; min-height: 40px; max-height: 140px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); }
+.tabs { display: flex; gap: 4px; padding: 8px 14px 0; border-top: 1px solid var(--line); }
+.tab { border-radius: 6px 6px 0 0; border-bottom: 0; }
+.pane { display: none; padding: 12px 14px 16px; max-height: 34vh; overflow-y: auto; border-top: 1px solid var(--line); }
+.pane.open { display: block; }
+.slider { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; margin-bottom: 10px; }
 .slider label { font-size: 13px; }
-.slider output { font: 12px var(--font-num); color: var(--muted); font-variant-numeric: tabular-nums; }
+.slider output { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .slider input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
-.params { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
-.params label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
-.params input { font: 13px var(--font-num); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 5px 7px; width: 100%; box-sizing: border-box; }
-dl.spec { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; }
-dl.spec dt { color: var(--muted); font-size: 13px; }
-dl.spec dd { margin: 0; font: 13px var(--font-num); text-align: right; font-variant-numeric: tabular-nums; }
-ol.steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-.note { font-size: 12px; color: var(--muted); margin: 0; }
-.note strong { color: var(--warn); font-weight: 500; }
-.swatches { display: flex; gap: 8px; }
-.swatch { width: 26px; height: 26px; border-radius: 50%; padding: 0; border: 2px solid var(--line); }
-.swatch[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--panel) inset; }
-@media (max-width: 820px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: 62vh auto; height: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--muted); font-weight: 500; }
+.big { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+textarea.code { width: 100%; box-sizing: border-box; min-height: 180px; font: 12px/1.5 var(--mono); padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); resize: vertical; white-space: pre; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+@media (max-width: 860px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: 56vh auto; height: auto; }
   .rail { border-left: 0; border-top: 1px solid var(--line); }
-  .views { max-width: 100%; left: 16px; top: auto; bottom: 40px; justify-content: flex-start; }
+  .chat { min-height: 260px; }
+  .pane { max-height: none; }
 }
 </style>
-
+</head>
+<body>
 <div class="app">
   <div class="stage" id="stage">
     <div class="hud">
-      <h1>Seesun Keyring Case</h1>
-      <p>ESP32-S3-Touch-LCD-1.28 · 드래그로 회전, 휠/핀치로 확대</p>
+      <div><h1 id="title">Seesun 3D Studio</h1><p id="summary">오른쪽 채팅에 만들고 싶은 모델을 설명해 보세요.</p></div>
+      <div class="links"><a class="btn" href="keyring.html">전자 키링 케이스</a></div>
     </div>
     <div class="views">
-      <button id="vFront">정면</button>
-      <button id="vBack">뒷면</button>
-      <button id="vUsb">USB-C</button>
-      <button id="vIso">사선</button>
-      <button id="spin" aria-pressed="true">자동 회전</button>
+      <button id="vIso">사선</button><button id="vTop">위</button><button id="vFront">정면</button><button id="vSide">측면</button>
+      <button id="spin" aria-pressed="false">자동 회전</button>
     </div>
-    <div class="status" id="status">모델 생성 중…</div>
+    <div class="status" id="status">준비 중…</div>
   </div>
 
   <aside class="rail">
-    <section>
-      <h2>보기</h2>
-      <div class="slider">
-        <label for="explode">분해 정도</label><output id="explodeOut">0%</output>
-        <input id="explode" type="range" min="0" max="1" step="0.01" value="0">
+    <div class="bar">
+      <strong>Claude 모델링</strong>
+      <div class="row" style="margin:0">
+        <button id="newChat">새 대화</button>
+        <button id="gear" aria-expanded="false">설정</button>
       </div>
-      <div class="row">
-        <button id="tFront" aria-pressed="true">앞 베젤</button>
-        <button id="tBack" aria-pressed="true">뒷 케이스</button>
-        <button id="tBoard" aria-pressed="true">보드</button>
-        <button id="tBat" aria-pressed="true">배터리</button>
-        <button id="tScrew" aria-pressed="true">나사</button>
-        <button id="tCut" aria-pressed="false">단면</button>
-      </div>
-      <div class="swatches" role="group" aria-label="케이스 색상">
-        <button class="swatch" data-c="#2b2f33" aria-label="블랙" aria-pressed="true" style="background:#2b2f33"></button>
-        <button class="swatch" data-c="#eceae4" aria-label="화이트" aria-pressed="false" style="background:#eceae4"></button>
-        <button class="swatch" data-c="#d9673a" aria-label="오렌지" aria-pressed="false" style="background:#d9673a"></button>
-        <button class="swatch" data-c="#7aa6c9" aria-label="블루" aria-pressed="false" style="background:#7aa6c9"></button>
-        <button class="swatch" data-c="#9db88a" aria-label="세이지" aria-pressed="false" style="background:#9db88a"></button>
-      </div>
-    </section>
+    </div>
+    <div class="settings" id="settings">
+      <label>Anthropic API 키
+        <input id="apiKey" type="password" autocomplete="off" placeholder="sk-ant-..." spellcheck="false">
+      </label>
+      <label>모델
+        <select id="model">
+          <option value="claude-opus-5-5">Claude Opus 5.5 (정확, 기본)</option>
+          <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (빠름, 저렴)</option>
+          <option value="claude-haiku-5-5">Claude Haiku 5.5 (가장 저렴)</option>
+        </select>
+      </label>
+      <p class="note">키는 이 브라우저(localStorage)에만 저장되고 Anthropic API로만 전송됩니다. 모델링 코드는 키에 접근할 수 없는 격리된 Worker에서 실행됩니다. 공용 PC에서는 사용 후 키를 지우세요.</p>
+      <div class="row" style="margin:0"><button id="clearKey">키 삭제</button></div>
+    </div>
 
-    <section>
-      <h2>치수</h2>
-      <dl class="spec" id="spec"></dl>
-    </section>
+    <div class="chat" id="chat"></div>
+    <div class="composer">
+      <textarea id="prompt" rows="2" placeholder="예: 지름 60mm, 높이 40mm 펜 홀더. 벽 2.4mm, 바닥에 배수 구멍 4개"></textarea>
+      <button class="primary" id="send">보내기</button>
+    </div>
 
-    <section>
-      <h2>파라미터 (mm)</h2>
-      <form class="params" id="params">
-        <label>배터리 가로<input id="batW" type="number" step="0.1"></label>
-        <label>배터리 세로<input id="batL" type="number" step="0.1"></label>
-        <label>배터리 두께<input id="batT" type="number" step="0.1"></label>
-        <label>LCD 두께<input id="lcdT" type="number" step="0.1"></label>
-        <label>부품 공간<input id="compH" type="number" step="0.1"></label>
-        <label>공차 (편측)<input id="clr" type="number" step="0.05"></label>
-        <label>나사 길이 (M2)<input id="screwLen" type="number" step="1"></label>
-        <label>케이스 반지름<input id="wallR" type="number" step="0.5"></label>
-      </form>
-      <div class="row">
-        <button class="primary" id="rebuild">다시 생성</button>
-        <button id="reset">기본값</button>
-      </div>
-      <p class="note"><strong>먼저 캘리퍼스로 배터리와 LCD+PCB 두께를 재 주세요.</strong> 배터리 치수는 사진으로 추정한 값입니다.</p>
-    </section>
-
-    <section>
-      <h2>STL 내보내기</h2>
-      <div class="row">
-        <button class="primary" id="dlStl">STL 저장 (앞 베젤 + 뒷 케이스)</button>
-      </div>
-      <p class="note">현재 파라미터로 생성한 파일입니다. 출력 방향으로 정렬됨: 베젤은 화면 쪽이 바닥, 뒷 케이스는 뒷면이 바닥. 서포트 없이 출력 가능 (USB 구멍 위쪽 브리지 12mm).</p>
-    </section>
-
-    <section>
-      <h2>조립 순서</h2>
-      <ol class="steps">
-        <li>앞 베젤을 화면이 아래로 가게 놓고 보드를 LCD부터 넣습니다. USB-C가 베젤 아래쪽 홈에 맞아야 합니다.</li>
-        <li>배터리 커넥터(MX1.25)를 꽂고, 선은 오른쪽 홈으로 넘깁니다.</li>
-        <li>배터리 윗면에 1mm 양면 폼테이프를 붙여 뒷 케이스의 배터리 칸에 넣습니다.</li>
-        <li>뒷 케이스를 덮고 뒷면에서 M2×12 나사 3개를 조입니다. 셀프태핑(PT/태핑) 나사를 권장합니다.</li>
-        <li>열쇠고리 링(Ø4 구멍)을 끼웁니다. USB-C 케이블을 꽂아 충전되는지 확인합니다.</li>
-      </ol>
-    </section>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-pane="pParams" aria-selected="true">파라미터</button>
+      <button class="tab" role="tab" data-pane="pDims" aria-selected="false">치수</button>
+      <button class="tab" role="tab" data-pane="pCode" aria-selected="false">코드</button>
+      <button class="tab" role="tab" data-pane="pExport" aria-selected="false">내보내기</button>
+    </div>
+    <div class="pane open" id="pParams"><div id="sliders"></div><p class="muted" id="noParams">모델이 만들어지면 조절할 수 있는 슬라이더가 여기 나타납니다. 슬라이더는 Claude 호출 없이 바로 모델을 다시 만듭니다.</p></div>
+    <div class="pane" id="pDims"><div id="dims"></div></div>
+    <div class="pane" id="pCode">
+      <textarea class="code" id="code" spellcheck="false"></textarea>
+      <p class="muted">파라미터 JSON</p>
+      <textarea class="code" id="paramsJson" spellcheck="false" style="min-height:90px"></textarea>
+      <div class="row"><button class="primary" id="runCode">코드 실행</button><button id="copyCode">코드 복사</button></div>
+      <p class="muted">함수 본문입니다. <code>params</code>, <code>wasm</code>, <code>Manifold</code>, <code>CrossSection</code> 사용 가능하고 Manifold를 return 합니다. 직접 고친 코드는 다음 요청 때 Claude에게 전달됩니다.</p>
+    </div>
+    <div class="pane" id="pExport">
+      <div class="row" style="margin-top:0"><button class="primary" id="dlAll">STL 저장</button><button id="dlMerged">하나로 합쳐 STL</button></div>
+      <p class="muted" id="exportNote">부품이 여럿이면 STL을 zip으로 묶어 저장합니다. 좌표는 mm, Z가 위쪽입니다. 슬라이서에서 바닥면(Z=0)이 베드에 놓이는지 확인하세요.</p>
+    </div>
   </aside>
 </div>
 
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "@anthropic-ai/sdk": "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm"
 } }
 </script>
-<script type="module">
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import ManifoldModule from './vendor/manifold.js';
-import { DEFAULTS, buildCase, toSTL } from './case.js';
-
-const $ = (id) => document.getElementById(id);
-const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const status = $('status');
-
-// ---------- scene ----------
-const stage = $('stage');
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.localClippingEnabled = true;
-stage.prepend(renderer.domElement);
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(35, 1, 1, 2000);
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.autoRotate = true;
-controls.autoRotateSpeed = 1.6;
-
-scene.add(new THREE.HemisphereLight(0xffffff, 0x8090a0, 1.6));
-const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(60, 90, 120); scene.add(key);
-const rim = new THREE.DirectionalLight(0xffffff, 0.9); rim.position.set(-80, -40, -90); scene.add(rim);
-
-// The model is built with z toward the screen; turn it so the screen faces the camera and the loop points up.
-const root = new THREE.Group();
-scene.add(root);
-
-const clip = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0);
-let clipping = [];
-
-function themeBackground() { scene.background = new THREE.Color(css('--stage') || '#e4e8ec'); }
-themeBackground();
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeBackground);
-new MutationObserver(themeBackground).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-
-function resize() {
-  const r = stage.getBoundingClientRect();
-  renderer.setSize(r.width, r.height, false);
-  camera.aspect = r.width / Math.max(r.height, 1);
-  camera.updateProjectionMatrix();
-}
-new ResizeObserver(resize).observe(stage);
-
-function setView(dir) {
-  const d = 175;
-  const v = { front: [0, 0, 1], back: [0, 0, -1], usb: [0.35, -1, 0.35], iso: [0.8, 0.45, 1], side: [1, 0.2, 0.25] }[dir];
-  const n = new THREE.Vector3(...v).normalize().multiplyScalar(d);
-  camera.position.copy(n);
-  controls.target.set(0, 0, 0);
-  controls.update();
-}
-
-// ---------- materials ----------
-const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0, side: THREE.DoubleSide, ...extra });
-const caseMat = mat('#2b2f33', { roughness: 0.75 });
-const pcbMat = mat('#1d4fa8', { roughness: 0.5 });
-const metalMat = mat('#c9cdd2', { metalness: 0.85, roughness: 0.3 });
-const lcdBodyMat = mat('#101214', { roughness: 0.35 });
-const batMat = mat('#b7bcc2', { metalness: 0.5, roughness: 0.35 });
-const tapeMat = mat('#e0a52a', { roughness: 0.4 });
-const connMat = mat('#f1efe8');
-const screwMat = mat('#8e949a', { metalness: 0.9, roughness: 0.35 });
-
-function screenTexture() {
-  const c = document.createElement('canvas'); c.width = c.height = 512;
-  const g = c.getContext('2d');
-  g.fillStyle = '#0d1a4a'; g.fillRect(0, 0, 512, 512);
-  const grad = g.createRadialGradient(256, 236, 20, 256, 256, 256);
-  grad.addColorStop(0, '#2c4bb8'); grad.addColorStop(1, '#0d1a4a');
-  g.fillStyle = grad; g.beginPath(); g.arc(256, 256, 256, 0, 7); g.fill();
-  g.fillStyle = '#e46a2a'; g.beginPath(); g.arc(256, 270, 135, 0, 7); g.fill();
-  g.fillStyle = '#7fe3a0';
-  for (const [x, y] of [[206, 270], [306, 270], [256, 200]]) { g.beginPath(); g.ellipse(x, y, 20, 9, 0, 0, 7); g.fill(); }
-  g.strokeStyle = '#3a1205'; g.lineWidth = 6; g.beginPath(); g.arc(256, 320, 34, 0.2, Math.PI - 0.2); g.stroke();
-  g.fillStyle = '#7fe3a0'; g.fillRect(232, 46, 44, 22); g.fillRect(276, 52, 5, 10);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
-}
-const screenMat = new THREE.MeshStandardMaterial({ map: screenTexture(), emissive: '#ffffff', emissiveIntensity: 0.55, emissiveMap: null, roughness: 0.15 });
-screenMat.emissiveMap = screenMat.map;
-
-function meshFromManifold(m, material) {
-  const mesh = m.getMesh();
-  const geo = new THREE.BufferGeometry();
-  const pos = new Float32Array(mesh.numVert * 3);
-  for (let i = 0; i < mesh.numVert; i++) for (let j = 0; j < 3; j++) pos[3 * i + j] = mesh.vertProperties[i * mesh.numProp + j];
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geo.setIndex(new THREE.BufferAttribute(mesh.triVerts, 1));
-  const flat = geo.toNonIndexed(); flat.computeVertexNormals();
-  return new THREE.Mesh(flat, material);
-}
-const box = (w, h, d, material, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material); m.position.set(x, y, z); return m; };
-
-function boardGroup(p, L) {
-  const g = new THREE.Group();
-  // PCB footprint: circle + rounded tab
-  const s = new THREE.Shape();
-  const t = Math.acos(p.tabW / 2 / p.pcbR);
-  s.absarc(0, 0, p.pcbR, -t, Math.PI + t, false);
-  const hw = p.tabW / 2, yb = -p.tabBottom;
-  s.lineTo(-hw, yb + 2); s.quadraticCurveTo(-hw, yb, -hw + 2, yb); s.lineTo(hw - 2, yb); s.quadraticCurveTo(hw, yb, hw, yb + 2); s.closePath();
-  const pcb = new THREE.Mesh(new THREE.ExtrudeGeometry(s, { depth: p.pcbT, bevelEnabled: false, curveSegments: 48 }), pcbMat);
-  pcb.position.z = L.zSplit; g.add(pcb);
-  // LCD module and glass
-  const lcd = new THREE.Mesh(new THREE.CylinderGeometry(p.lcdD / 2, p.lcdD / 2, p.lcdT - 0.2, 96), lcdBodyMat);
-  lcd.rotation.x = Math.PI / 2; lcd.position.z = L.zLcd + (p.lcdT - 0.2) / 2; g.add(lcd);
-  const glass = new THREE.Mesh(new THREE.CircleGeometry(33.4 / 2, 96), screenMat);
-  glass.position.z = L.zLip - 0.18; g.add(glass);
-  // USB-C receptacle on the back of the tab
-  const usb = box(p.usbW, 7.35, p.usbH, metalMat, 0, -p.tabBottom + 7.35 / 2 - 0.36, L.zSplit - p.usbH / 2); g.add(usb);
-  // MX1.25 battery connector and buttons
-  g.add(box(3.6, 6, 3.2, connMat, 14.3, 3, L.zSplit - 1.6));
-  g.add(box(3.4, 3.4, 1.4, metalMat, -10, 12.5, L.zSplit - 0.7));
-  g.add(box(3.4, 3.4, 1.4, metalMat, 10, 12.5, L.zSplit - 0.7));
-  g.add(box(7, 7, 1, lcdBodyMat, -11, 3, L.zSplit - 0.5));
-  return g;
-}
-function batteryGroup(p, L) {
-  const g = new THREE.Group();
-  g.add(box(p.batW, p.batL, p.batT, batMat, 0, 0, L.zBat + p.batT / 2));
-  g.add(box(p.batW + 0.05, 3, p.batT + 0.05, tapeMat, 0, p.batL / 2 - 1.5, L.zBat + p.batT / 2));
-  return g;
-}
-function screwGroup(p, L) {
-  const g = new THREE.Group();
-  for (const a of p.screwAngles) {
-    const x = p.screwR * Math.cos(a * Math.PI / 180), y = p.screwR * Math.sin(a * Math.PI / 180);
-    const shank = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, p.screwLen, 20), screwMat);
-    shank.rotation.x = Math.PI / 2; shank.position.set(x, y, L.seat + p.screwLen / 2); g.add(shank);
-    const head = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 1.9, 1.6, 28), screwMat);
-    head.rotation.x = Math.PI / 2; head.position.set(x, y, L.seat - 0.8); g.add(head);
-  }
-  return g;
-}
-
-// ---------- model ----------
-const wasm = await ManifoldModule({ locateFile: (f) => new URL('./vendor/' + f, import.meta.url).href });
-wasm.setup();
-
-let parts = {};
-let built = null;
-let params = { ...DEFAULTS };
-
-function fillForm() { for (const el of $('params').querySelectorAll('input')) el.value = params[el.id]; }
-function readForm() {
-  for (const el of $('params').querySelectorAll('input')) {
-    const v = parseFloat(el.value);
-    if (Number.isFinite(v)) params[el.id] = v;
-  }
-}
-
-function rebuild() {
-  status.textContent = '모델 생성 중…';
-  const t0 = performance.now();
-  if (built) { built.front.delete(); built.back.delete(); }
-  root.clear();
-  built = buildCase(wasm, params);
-  const { front, back, layout: L, params: p } = built;
-  root.position.set(0, 0, -L.H / 2);
-  parts = {
-    front: meshFromManifold(front, caseMat),
-    back: meshFromManifold(back, caseMat),
-    board: boardGroup(p, L),
-    bat: batteryGroup(p, L),
-    screw: screwGroup(p, L),
-  };
-  for (const k in parts) root.add(parts[k]);
-  applyToggles(); applyExplode(); applyClip();
-  const lugTop = p.wallR + 4 + 4.8;
-  $('spec').innerHTML = [
-    ['외형', `Ø${(2 * p.wallR).toFixed(1)} × ${L.H.toFixed(1)}`],
-    ['고리 포함 높이', `${(p.wallR + lugTop).toFixed(1)}`],
-    ['앞 베젤 높이', `${(L.H - L.zSplit).toFixed(1)}`],
-    ['뒷 케이스 높이', `${L.zSplit.toFixed(1)}`],
-    ['화면 창', `Ø${p.windowD.toFixed(1)}`],
-    ['USB-C 개구부', `${p.plugW} × ${p.plugH}`],
-    ['나사', `M2×${p.screwLen} · 3개`],
-    ['나사 체결 깊이', `${(L.screwTip - L.zSplit).toFixed(1)}`],
-  ].map(([k, v]) => `<dt>${k}</dt><dd>${v} mm</dd>`).join('').replace('3개 mm', '3개');
-  status.textContent = `생성 완료 · ${(performance.now() - t0).toFixed(0)} ms`;
-}
-
-// ---------- controls ----------
-function toggle(btn, key) {
-  btn.addEventListener('click', () => {
-    btn.setAttribute('aria-pressed', btn.getAttribute('aria-pressed') !== 'true');
-    applyToggles();
-  });
-  btn.dataset.part = key;
-}
-const toggles = [['tFront', 'front'], ['tBack', 'back'], ['tBoard', 'board'], ['tBat', 'bat'], ['tScrew', 'screw']];
-toggles.forEach(([id, k]) => toggle($(id), k));
-function applyToggles() { for (const [id, k] of toggles) if (parts[k]) parts[k].visible = $(id).getAttribute('aria-pressed') === 'true'; }
-
-function applyExplode() {
-  const e = parseFloat($('explode').value);
-  $('explodeOut').textContent = Math.round(e * 100) + '%';
-  if (!parts.front) return;
-  parts.front.position.z = e * 26;
-  parts.board.position.z = e * 13;
-  parts.bat.position.z = e * 2;
-  parts.back.position.z = -e * 8;
-  parts.screw.position.z = -e * 30;
-}
-$('explode').addEventListener('input', applyExplode);
-
-$('tCut').addEventListener('click', () => {
-  const b = $('tCut'); const on = b.getAttribute('aria-pressed') !== 'true';
-  b.setAttribute('aria-pressed', on); applyClip();
-  if (on) { setView('side'); controls.autoRotate = false; $('spin').setAttribute('aria-pressed', 'false'); }
-});
-function applyClip() {
-  clipping = $('tCut').getAttribute('aria-pressed') === 'true' ? [clip] : [];
-  root.traverse((o) => { if (o.material) o.material.clippingPlanes = clipping; });
-}
-
-document.querySelectorAll('.swatch').forEach((s) => s.addEventListener('click', () => {
-  document.querySelectorAll('.swatch').forEach((o) => o.setAttribute('aria-pressed', o === s));
-  caseMat.color.set(s.dataset.c);
-}));
-
-$('spin').addEventListener('click', () => {
-  controls.autoRotate = !controls.autoRotate;
-  $('spin').setAttribute('aria-pressed', controls.autoRotate);
-});
-$('vFront').onclick = () => setView('front');
-$('vBack').onclick = () => setView('back');
-$('vUsb').onclick = () => setView('usb');
-$('vIso').onclick = () => setView('iso');
-
-$('params').addEventListener('submit', (e) => { e.preventDefault(); readForm(); rebuild(); });
-$('rebuild').addEventListener('click', () => { readForm(); rebuild(); });
-$('reset').addEventListener('click', () => { params = { ...DEFAULTS }; fillForm(); rebuild(); });
-
-function printable(m, flip) {
-  let part = flip ? m.rotate([180, 0, 0]) : m;
-  return new Uint8Array(toSTL(part.translate([0, 0, -part.boundingBox().min[2]])));
-}
-// Store-only ZIP, enough to bundle the two STLs
-const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
-const crc32 = (b) => { let c = ~0; for (const x of b) c = crcTable[(c ^ x) & 255] ^ (c >>> 8); return ~c >>> 0; };
-function zip(files) {
-  const chunks = [], central = []; let off = 0;
-  for (const { name, data } of files) {
-    const n = new TextEncoder().encode(name), crc = crc32(data);
-    const h = new DataView(new ArrayBuffer(30));
-    [[0, 0x04034b50, 4], [4, 20, 2], [14, crc, 4], [18, data.length, 4], [22, data.length, 4], [26, n.length, 2]].forEach(([o, v, w]) => w === 4 ? h.setUint32(o, v, true) : h.setUint16(o, v, true));
-    const c = new DataView(new ArrayBuffer(46));
-    [[0, 0x02014b50, 4], [4, 20, 2], [6, 20, 2], [16, crc, 4], [20, data.length, 4], [24, data.length, 4], [28, n.length, 2], [42, off, 4]].forEach(([o, v, w]) => w === 4 ? c.setUint32(o, v, true) : c.setUint16(o, v, true));
-    chunks.push(h, n, data); central.push(c, n);
-    off += 30 + n.length + data.length;
-  }
-  const size = central.reduce((a, x) => a + x.byteLength, 0);
-  const e = new DataView(new ArrayBuffer(22));
-  [[0, 0x06054b50, 4], [8, files.length, 2], [10, files.length, 2], [12, size, 4], [16, off, 4]].forEach(([o, v, w]) => w === 4 ? e.setUint32(o, v, true) : e.setUint16(o, v, true));
-  return new Blob([...chunks, ...central, e], { type: 'application/zip' });
-}
-async function saveStl() {
-  const files = [
-    { name: 'keyring-front-bezel.stl', data: printable(built.front, true) },
-    { name: 'keyring-back-shell.stl', data: printable(built.back, false) },
-  ];
-  const downloads = window.claude?.use ? await window.claude.use('downloads') : null;
-  if (downloads) {
-    try { await downloads.save({ filename: 'seesun-keyring-stl.zip', data: zip(files) }); status.textContent = 'STL zip 저장됨'; }
-    catch (err) { status.textContent = err.code === 'declined' ? '저장을 취소했습니다' : '이 화면에서는 저장할 수 없습니다. 저장소의 stl/ 폴더를 쓰세요'; }
-    return;
-  }
-  for (const f of files) {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([f.data], { type: 'model/stl' })); a.download = f.name; a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  }
-  status.textContent = 'STL 2개 저장됨';
-}
-$('dlStl').onclick = saveStl;
-
-// ---------- go ----------
-fillForm();
-rebuild();
-// Rotate the scene so the loop is up and the screen faces +z toward the camera
-setView('iso');
-resize();
-const reduce = matchMedia('(prefers-reduced-motion: reduce)');
-if (reduce.matches) { controls.autoRotate = false; $('spin').setAttribute('aria-pressed', 'false'); }
-renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
-</script>
+<script type="module" src="studio.js"></script>
+</body>
+</html>
